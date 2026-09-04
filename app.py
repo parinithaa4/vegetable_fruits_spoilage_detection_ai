@@ -87,3 +87,4 @@ if image is not None:
         ax.spines['right'].set_visible(False)
 
         fig_placeholder.pyplot(fig)
+    
