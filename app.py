@@ -19,7 +19,7 @@ st.markdown("""
     🍎 AI Freshness Detection System
     </h1>
     <p style="color:#d32f2f;text-align:center;font-size:18px">
-    Upload an image or use live camera to detect Fresh or Rotten.
+    Upload an image or take a photo to detect Fresh or Rotten.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -32,36 +32,24 @@ model = load_model()
 
 st.sidebar.header("⚙ Settings")
 
-BUFFER_SIZE = st.sidebar.slider("Frames to Average", 5, 30, 10)
 THRESHOLD_HIGH = st.sidebar.slider("Rotten Threshold", 0.5, 0.9, 0.6)
-THRESHOLD_LOW = st.sidebar.slider("Fresh Threshold", 0.1, 0.5, 0.4)
 
-stop_camera = st.sidebar.button("Stop Camera")
-
-option = st.radio("Choose Input Method:", ["Upload Image", "Use Camera"])
-
-frame_placeholder = st.empty()
 fig_placeholder = st.empty()
 label_placeholder = st.empty()
 progress_placeholder = st.empty()
 
-def decide_label(avg_pred, last_label):
-    if avg_pred > THRESHOLD_HIGH:
-        return "Rotten"
-    elif avg_pred < THRESHOLD_LOW:
-        return "Fresh"
-    else:
-        return last_label
+input_method = st.radio("Choose Input Method:", ["Upload Image", "Take Photo (Camera)"])
 
-if option == "Upload Image":
-
+if input_method == "Upload Image":
     image = st.file_uploader("Upload fruit/vegetable image", type=["jpg","jpeg","png"])
+else:
+    image = st.camera_input("Take a photo of the fruit/vegetable")
 
-    if image is not None:
+if image is not None:
 
         file_bytes = np.asarray(bytearray(image.read()), dtype=np.uint8)
         frame = cv2.imdecode(file_bytes, 1)
-        st.image(frame, caption="Uploaded Image", use_column_width=True)
+        st.image(frame, caption="Image for Analysis", use_column_width=True)
 
         img = cv2.resize(frame, (224,224))
         img = preprocess_input(img)
@@ -99,75 +87,3 @@ if option == "Upload Image":
         ax.spines['right'].set_visible(False)
 
         fig_placeholder.pyplot(fig)
-
-else:
-
-    cap = cv2.VideoCapture(0)
-    last_label = "Fresh"
-    prediction_buffer = []
-
-    while True:
-
-        if stop_camera:
-            st.warning("Camera stopped.")
-            break
-
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Camera not working.")
-            break
-
-        img = cv2.resize(frame,(224,224))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img_input = preprocess_input(img)
-        img_input = np.expand_dims(img_input, axis=0)
-
-        prediction = model.predict(img_input, verbose=0)[0][0]
-
-        prediction_buffer.append(prediction)
-        if len(prediction_buffer) > BUFFER_SIZE:
-            prediction_buffer.pop(0)
-
-        avg_prediction = np.mean(prediction_buffer)
-
-        label = decide_label(avg_prediction, last_label)
-        last_label = label
-
-        text_color = (0,255,0) if label=="Fresh" else (0,0,255)
-
-        cv2.putText(frame, f"{label}: {avg_prediction:.2f}",
-                    (20,50),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1, text_color, 2)
-
-        frame_placeholder.image(frame, channels="BGR")
-
-        rotten_percent = avg_prediction * 100
-        fresh_percent = (1 - avg_prediction) * 100
-
-        fig, ax = plt.subplots(figsize=(6,4))
-        bars = ax.bar(["Fresh", "Rotten"], [fresh_percent, rotten_percent])
-
-        bars[0].set_color("#27ae60")
-        bars[1].set_color("#e74c3c")
-
-        ax.set_ylim(0,100)
-        ax.set_ylabel("Confidence (%)")
-        ax.set_title("Real-Time Freshness Confidence", fontweight="bold")
-
-        for i, v in enumerate([fresh_percent, rotten_percent]):
-            ax.text(i, v + 2, f"{v:.1f}%", ha='center', fontweight='bold')
-
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-
-        fig_placeholder.pyplot(fig)
-
-        progress_placeholder.progress(
-            int(rotten_percent) if label=="Rotten"
-            else int(fresh_percent)
-        )
-
-        time.sleep(0.1)
-
-    cap.release()
